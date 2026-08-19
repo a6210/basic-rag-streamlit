@@ -1,8 +1,12 @@
 import os
-from pathlib import Path
-
 import streamlit as st
 from dotenv import load_dotenv
+
+load_dotenv(".env", override=True)
+
+if "GOOGLE_API_KEY" in st.secrets:
+    os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
+
 
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
