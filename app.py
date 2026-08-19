@@ -2,21 +2,30 @@ import os
 import streamlit as st
 from dotenv import load_dotenv
 
-load_dotenv(".env", override=True)
-
-if "GOOGLE_API_KEY" in st.secrets:
-    os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
-
-
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 
+
 load_dotenv(".env", override=True)
+
+google_api_key = None
+
+try:
+    google_api_key = st.secrets["GOOGLE_API_KEY"]
+except Exception:
+    google_api_key = os.getenv("GOOGLE_API_KEY")
+
+if not google_api_key:
+    st.error("GOOGLE_API_KEY is missing.")
+    st.stop()
+
+
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
+
 vector_db = Chroma(
     persist_directory="./chroma_db",
     embedding_function=embedding_model
