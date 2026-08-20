@@ -1,4 +1,5 @@
 import os
+import tempfile
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -6,14 +7,13 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
-from pathlib import Path
-import tempfile
-
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
-# Streamlit page config
+# -------------------------
+# Streamlit Page Config
+# -------------------------
 
 st.set_page_config(
     page_title="PDF RAG Assistant",
@@ -22,8 +22,9 @@ st.set_page_config(
 )
 
 
-
-# Load API key
+# -------------------------
+# Load API Key
+# -------------------------
 
 load_dotenv(".env", override=True)
 
@@ -39,16 +40,19 @@ if not google_api_key:
     st.stop()
 
 
-
-# Embedding model
+# -------------------------
+# Embedding Model
+# -------------------------
 
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
 
-
+# -------------------------
 # Chroma Vector Database
+# -------------------------
+
 vector_db = Chroma(
     persist_directory="./chroma_db",
     embedding_function=embedding_model
@@ -59,7 +63,9 @@ retriever = vector_db.as_retriever(
 )
 
 
+# -------------------------
 # Gemini LLM
+# -------------------------
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-3.6-flash",
@@ -68,8 +74,9 @@ llm = ChatGoogleGenerativeAI(
 )
 
 
-
+# -------------------------
 # Prompt
+# -------------------------
 
 prompt = ChatPromptTemplate.from_template("""
 You are a helpful document assistant.
@@ -88,12 +95,12 @@ Question:
 Answer:
 """)
 
-
 rag_chain = prompt | llm
 
 
-
+# -------------------------
 # RAG Function
+# -------------------------
 
 def ask_rag(question):
 
@@ -103,10 +110,24 @@ def ask_rag(question):
         doc.page_content for doc in retrieved_docs
     )
 
-    response = rag_chain.invoke({
-        "context": context,
-        "question": question
-    })
+    try:
+        response = rag_chain.invoke({
+            "context": context,
+            "question": question
+        })
+
+    except Exception as e:
+
+        if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+            return (
+                "Gemini API quota has been reached. Please try again later.",
+                []
+            )
+
+        return (
+            "An error occurred while generating the answer.",
+            []
+        )
 
     if isinstance(response.content, list):
         answer = response.content[0]["text"]
@@ -123,7 +144,13 @@ def ask_rag(question):
 
     return answer, sources
 
+
+# -------------------------
+# Process Uploaded PDF
+# -------------------------
+
 def process_uploaded_pdf(uploaded_file):
+
     with tempfile.NamedTemporaryFile(
         delete=False,
         suffix=".pdf"
@@ -133,6 +160,7 @@ def process_uploaded_pdf(uploaded_file):
         temp_path = temp_file.name
 
     loader = PyPDFLoader(temp_path)
+
     documents = loader.load()
 
     for doc in documents:
@@ -143,25 +171,39 @@ def process_uploaded_pdf(uploaded_file):
         chunk_overlap=100
     )
 
-    chunks = text_splitter.split_documents(documents)
+    chunks = text_splitter.split_documents(
+        documents
+    )
 
-    vector_db.add_documents(chunks)
+    vector_db.add_documents(
+        chunks
+    )
 
     return len(documents), len(chunks)
 
-# Streamlit UI
 
+# -------------------------
+# Streamlit UI
+# -------------------------
 
 st.title("📚 PDF RAG Assistant")
 
 st.write(
     "Upload a PDF, process it, and then ask questions about the documents."
 )
+
+
+# -------------------------
+# Session State
+# -------------------------
+
 if "processed_files" not in st.session_state:
     st.session_state.processed_files = set()
 
-# Upload PDF
 
+# -------------------------
+# Upload PDF
+# -------------------------
 
 st.subheader("1️⃣ Upload PDF")
 
@@ -173,11 +215,16 @@ uploaded_file = st.file_uploader(
 if uploaded_file is not None:
 
     if uploaded_file.name in st.session_state.processed_files:
-        st.info("This PDF has already been processed.")
+
+        st.info(
+            "This PDF has already been processed."
+        )
 
     elif st.button("Process PDF"):
 
-        with st.spinner("Processing PDF..."):
+        with st.spinner(
+            "Processing PDF..."
+        ):
 
             pages, chunks = process_uploaded_pdf(
                 uploaded_file
@@ -189,11 +236,14 @@ if uploaded_file is not None:
 
         st.success(
             f"PDF added successfully! "
-            f"{pages} pages and {chunks} chunks processed."
+            f"{pages} pages and "
+            f"{chunks} chunks processed."
         )
 
 
-
+# -------------------------
+# Ask Question
+# -------------------------
 
 st.subheader("2️⃣ Ask a Question")
 
@@ -210,23 +260,50 @@ if st.button("Ask"):
             "Searching documents and generating answer..."
         ):
 
-            answer, sources = ask_rag(question)
+            answer, sources = ask_rag(
+                question
+            )
 
         st.subheader("Answer")
-        st.write(answer)
 
-        st.subheader("Sources")
+        st.write(
+            answer
+        )
 
-        for source in sources:
 
-            page = source["page"]
+        # -------------------------
+        # Display Sources
+        # -------------------------
 
-            if page is not None:
-                page = page + 1
+        if sources:
 
-            st.write(
-                f"📄 {source['source']} — Page {page}"
-            )
+            st.subheader("Sources")
+
+            unique_sources = set()
+
+            for source in sources:
+
+                page = source["page"]
+
+                if page is not None:
+                    page = page + 1
+
+                source_name = source["source"]
+
+                source_key = (
+                    source_name,
+                    page
+                )
+
+                if source_key not in unique_sources:
+
+                    unique_sources.add(
+                        source_key
+                    )
+
+                    st.markdown(
+                        f"📄 **{source_name}** — Page {page}"
+                    )
 
     else:
 
