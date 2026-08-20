@@ -6,8 +6,25 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
+from pathlib import Path
+import tempfile
+
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+# -------------------------
+# Streamlit page config
+# -------------------------
+st.set_page_config(
+    page_title="PDF RAG Assistant",
+    page_icon="📚",
+    layout="centered"
+)
 
 
+# -------------------------
+# Load API key
+# -------------------------
 load_dotenv(".env", override=True)
 
 google_api_key = None
@@ -22,21 +39,40 @@ if not google_api_key:
     st.stop()
 
 
+# -------------------------
+# Embedding model
+# -------------------------
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
+
+# -------------------------
+# Chroma Vector Database
+# -------------------------
 vector_db = Chroma(
     persist_directory="./chroma_db",
     embedding_function=embedding_model
 )
+
 retriever = vector_db.as_retriever(
     search_kwargs={"k": 3}
 )
+
+
+# -------------------------
+# Gemini LLM
+# -------------------------
 llm = ChatGoogleGenerativeAI(
     model="gemini-3.6-flash",
+    google_api_key=google_api_key,
     temperature=0
 )
+
+
+# -------------------------
+# Prompt
+# -------------------------
 prompt = ChatPromptTemplate.from_template("""
 You are a helpful document assistant.
 
@@ -53,8 +89,16 @@ Question:
 
 Answer:
 """)
+
+
 rag_chain = prompt | llm
+
+
+# -------------------------
+# RAG Function
+# -------------------------
 def ask_rag(question):
+
     retrieved_docs = retriever.invoke(question)
 
     context = "\n\n".join(
@@ -80,26 +124,92 @@ def ask_rag(question):
         })
 
     return answer, sources
-st.set_page_config(
-    page_title="PDF RAG Assistant",
-    page_icon="📚",
-    layout="centered"
-)
+
+def process_uploaded_pdf(uploaded_file):
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".pdf"
+    ) as temp_file:
+
+        temp_file.write(uploaded_file.getbuffer())
+        temp_path = temp_file.name
+
+    loader = PyPDFLoader(temp_path)
+    documents = loader.load()
+
+    for doc in documents:
+        doc.metadata["source_file"] = uploaded_file.name
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=500,
+        chunk_overlap=100
+    )
+
+    chunks = text_splitter.split_documents(documents)
+
+    vector_db.add_documents(chunks)
+
+    return len(documents), len(chunks)
+# -------------------------
+# Streamlit UI
+# -------------------------
+# -------------------------
+# Streamlit UI
+# -------------------------
 
 st.title("📚 PDF RAG Assistant")
 
 st.write(
-    "Ask questions about the PDF documents stored in the knowledge base."
+    "Upload a PDF, process it, and then ask questions about the documents."
 )
 
+
+# -------------------------
+# Upload PDF
+# -------------------------
+
+st.subheader("1️⃣ Upload PDF")
+
+uploaded_file = st.file_uploader(
+    "Upload a PDF to add to the knowledge base",
+    type=["pdf"]
+)
+
+if uploaded_file is not None:
+
+    if st.button("Process PDF"):
+
+        with st.spinner("Processing PDF..."):
+
+            pages, chunks = process_uploaded_pdf(
+                uploaded_file
+            )
+
+        st.success(
+            f"PDF added successfully! "
+            f"{pages} pages and {chunks} chunks processed."
+        )
+
+
+# -------------------------
+# Ask Question
+# -------------------------
+
+st.subheader("2️⃣ Ask a Question")
+
 question = st.text_input(
-    "Enter your question:"
+    "Enter your question:",
+    placeholder="Example: What is PyTorch?"
 )
 
 if st.button("Ask"):
+
     if question.strip():
 
-        with st.spinner("Searching documents and generating answer..."):
+        with st.spinner(
+            "Searching documents and generating answer..."
+        ):
+
             answer, sources = ask_rag(question)
 
         st.subheader("Answer")
@@ -108,6 +218,7 @@ if st.button("Ask"):
         st.subheader("Sources")
 
         for source in sources:
+
             page = source["page"]
 
             if page is not None:
@@ -118,4 +229,7 @@ if st.button("Ask"):
             )
 
     else:
-        st.warning("Please enter a question.")
+
+        st.warning(
+            "Please enter a question."
+        )
