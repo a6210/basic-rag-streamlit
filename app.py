@@ -157,7 +157,8 @@ st.title("📚 PDF RAG Assistant")
 st.write(
     "Upload a PDF, process it, and then ask questions about the documents."
 )
-
+if "processed_files" not in st.session_state:
+    st.session_state.processed_files = set()
 
 # Upload PDF
 
@@ -171,13 +172,20 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    if st.button("Process PDF"):
+    if uploaded_file.name in st.session_state.processed_files:
+        st.info("This PDF has already been processed.")
+
+    elif st.button("Process PDF"):
 
         with st.spinner("Processing PDF..."):
 
             pages, chunks = process_uploaded_pdf(
                 uploaded_file
             )
+
+        st.session_state.processed_files.add(
+            uploaded_file.name
+        )
 
         st.success(
             f"PDF added successfully! "
