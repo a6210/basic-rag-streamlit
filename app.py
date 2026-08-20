@@ -12,9 +12,9 @@ import tempfile
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# -------------------------
+
 # Streamlit page config
-# -------------------------
+
 st.set_page_config(
     page_title="PDF RAG Assistant",
     page_icon="📚",
@@ -22,9 +22,9 @@ st.set_page_config(
 )
 
 
-# -------------------------
+
 # Load API key
-# -------------------------
+
 load_dotenv(".env", override=True)
 
 google_api_key = None
@@ -39,17 +39,16 @@ if not google_api_key:
     st.stop()
 
 
-# -------------------------
+
 # Embedding model
-# -------------------------
+
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
 
-# -------------------------
+
 # Chroma Vector Database
-# -------------------------
 vector_db = Chroma(
     persist_directory="./chroma_db",
     embedding_function=embedding_model
@@ -60,9 +59,8 @@ retriever = vector_db.as_retriever(
 )
 
 
-# -------------------------
 # Gemini LLM
-# -------------------------
+
 llm = ChatGoogleGenerativeAI(
     model="gemini-3.6-flash",
     google_api_key=google_api_key,
@@ -70,9 +68,9 @@ llm = ChatGoogleGenerativeAI(
 )
 
 
-# -------------------------
+
 # Prompt
-# -------------------------
+
 prompt = ChatPromptTemplate.from_template("""
 You are a helpful document assistant.
 
@@ -94,9 +92,9 @@ Answer:
 rag_chain = prompt | llm
 
 
-# -------------------------
+
 # RAG Function
-# -------------------------
+
 def ask_rag(question):
 
     retrieved_docs = retriever.invoke(question)
@@ -150,12 +148,9 @@ def process_uploaded_pdf(uploaded_file):
     vector_db.add_documents(chunks)
 
     return len(documents), len(chunks)
-# -------------------------
+
 # Streamlit UI
-# -------------------------
-# -------------------------
-# Streamlit UI
-# -------------------------
+
 
 st.title("📚 PDF RAG Assistant")
 
@@ -164,9 +159,8 @@ st.write(
 )
 
 
-# -------------------------
 # Upload PDF
-# -------------------------
+
 
 st.subheader("1️⃣ Upload PDF")
 
@@ -191,9 +185,7 @@ if uploaded_file is not None:
         )
 
 
-# -------------------------
-# Ask Question
-# -------------------------
+
 
 st.subheader("2️⃣ Ask a Question")
 
